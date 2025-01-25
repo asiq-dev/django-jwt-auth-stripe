@@ -10,6 +10,11 @@ from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 
 from .serializers import UserProfileSrializer
 from .models import UserProfile
+import stripe
+from ventureAI import settings
+from django.urls import reverse
+
+stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
 class SignupUserAPIView(APIView):
@@ -44,6 +49,60 @@ class UserProfileAPIView(APIView):
             return Response(serializer.data)
         return Response(serializer.errors, status=400)
 
+
+
+
+#stripe implementation
+class CreateCheckoutSessionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        domain = request.build_absolute_uri('/')
+        user = request.user
+
+        # Create Stripe Checkout Session
+        try:
+            checkout_session = stripe.checkout.Session.create(
+                payment_method_types=['card'],
+                line_items=[
+                    {
+                        'price': 'price_1Ql6YZIWTrSQrl9xxmIHijky',
+                        'quantity': 1,
+                    }
+                ],
+                mode='subscription',  # Use 'payment' for one-time payments
+                success_url=domain + reverse('payment-success') + '?session_id={CHECKOUT_SESSION_ID}',
+                cancel_url=domain + reverse('payment-cancel'),
+                customer_email=user.email,  # Pre-fill the user's email
+            )
+            return Response({'url': checkout_session.url}, status=200)
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+
+class PaymentSuccessView(APIView):
+    permission_classes = [AllowAny]
+    def get(self, request):
+        session_id = request.query_params.get('session_id')
+        if not session_id:
+            return Response({'error': 'Session ID is missing'}, status=400)
+
+        try:
+            session = stripe.checkout.Session.retrieve(session_id)
+            customer_email = session['customer_details']['email']
+            # Retrieve and update the user profile
+            user = UserProfile.objects.get(email=customer_email)
+            user.is_subscribed = True
+            user.save()
+            return Response({'message': 'Subscription successful!'})
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+
+
+class PaymentCancelView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response({'message': 'Payment was canceled.'})
 
 # class UserAPI(APIView):
 #     authentication_classes = [JWTAuthentication]
