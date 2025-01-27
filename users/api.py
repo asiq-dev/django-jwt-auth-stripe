@@ -12,6 +12,8 @@ from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 
 from .serializers import UserProfileSrializer
 from .models import UserProfile
+
+from rest_framework import status
 import stripe
 from ventureAI import settings
 from django.urls import reverse
@@ -59,16 +61,16 @@ class UserProfileAPIView(APIView):
 
 # checkout for webhook implementation (webhook way)
 class CreateCheckoutSessionView(APIView):
-    permission_classes = [IsAuthenticated]  # Protect the endpoint with JWT
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
         domain = request.build_absolute_uri('/')
         try:
-            user = request.user  # Get the authenticated user
+            user = request.user
             checkout_session = stripe.checkout.Session.create(
                 payment_method_types=['card'],
                 line_items=[{
-                    'price': '',  # Replace with your Stripe Price ID
+                    'price': '',
                     'quantity': 1,
                 }],
                 mode='subscription',
@@ -76,7 +78,7 @@ class CreateCheckoutSessionView(APIView):
                 success_url= domain + reverse('payment-success'),
                 cancel_url= domain + reverse('payment-cancel'),
                 metadata={
-                    'user_id': user.id,  # Pass user ID as metadata
+                    'user_id': user.id,
                 },
             )
             return Response({'checkout_url': checkout_session['url']})
@@ -106,7 +108,7 @@ def StripeWebhookView(request):
         if user_id:
             try:
                 user = UserProfile.objects.get(id=user_id)
-                user.is_subscribed = True  # Update the user's subscription status
+                user.is_subscribed = True
                 user.save()
             except UserProfile.DoesNotExist:
                 return JsonResponse({'error': 'User not found'}, status=404)
@@ -122,7 +124,6 @@ class PaymentCancelView(APIView):
 
 
 # checkout for payment checkout by success and cancel(normal way)
-
 # class CreateCheckoutSessionView(APIView):
 #     permission_classes = [IsAuthenticated]
 
@@ -174,36 +175,18 @@ class PaymentCancelView(APIView):
 #     def get(self, request):
 #         return Response({'message': 'Payment was canceled.'})
 
-# @api_view(['POST'])
-# @permission_classes([IsAuthenticated])
-# def logout(request):
-#     refresh_token = request.data.get('refresh_token')
 
-#     if not refresh_token:
-#         return Response({'error': 'Refresh token is required.'}, status=400)
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
 
-#     try:
-#         token = RefreshToken(refresh_token)
-#         token.blacklist()
-#         return Response({'message': 'Successfully logged out.'}, status=200)
-#     except Exception as e:
-#         return Response({'error': f'Invalid token: {str(e)}'}, status=400)
-
-    
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def logout(request):
-    refresh_token = request.data.get('refresh_token')
-
-    if refresh_token:
+    def post(self, request):
         try:
+            refresh_token = request.data['refresh_token']
             token = RefreshToken(refresh_token)
             token.blacklist()
-            return Response({'message': 'Successfully logged out.'}, status=200)
+            return Response({"message": "Successfully logged out!"}, status=status.HTTP_205_RESET_CONTENT)
         except Exception as e:
-            return Response({'error': 'Invalid token.'}, status=400)
-    else:
-        return Response({'error': 'Refresh token is required.'}, status=400)
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 # @api_view(['POST'])
@@ -215,6 +198,25 @@ def logout(request):
 #         token.blacklist()
 #     return Response({'message': 'Successfully logged out from all sessions.'}, status=200)
 
+# class LogoutAllView(APIView):
+#     permission_classes = [IsAuthenticated]
+
+#     def post(self, request):
+#         try:
+#             user = request.user
+            
+#             # Get all outstanding refresh tokens for the user
+#             outstanding_tokens = OutstandingToken.objects.filter(user=user)
+            
+#             # Blacklist all refresh tokens
+#             for token in outstanding_tokens:
+#                 RefreshToken(token.token).blacklist()
+            
+#             return Response({"message": "Successfully logged out from all devices."},
+#                             status=status.HTTP_205_RESET_CONTENT)
+#         except Exception as e:
+#             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def logout_all(request):
@@ -223,12 +225,10 @@ def logout_all(request):
     
     for token in tokens:
         try:
-            # Check if the token is already blacklisted
             if not BlacklistedToken.objects.filter(token=token).exists():
                 refresh_token = RefreshToken(token.token)
                 refresh_token.blacklist()
         except Exception as e:
-            # Log or handle any exceptions that may occur
             return Response({'error': f'Failed to blacklist token: {str(e)}'}, status=400)
     
     return Response({'message': 'Successfully logged out from all sessions.'}, status=200)

@@ -2,7 +2,7 @@ from django.urls import path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .api import (
     SignupUserAPIView, UserProfileAPIView, CreateCheckoutSessionView, StripeWebhookView,
-    PaymentSuccessView, PaymentCancelView, logout, logout_all
+    PaymentSuccessView, PaymentCancelView, LogoutView, logout_all
 )
 
 
@@ -17,6 +17,6 @@ urlpatterns = [
     path('api/payment-success/', PaymentSuccessView.as_view(), name='payment-success'),
     path('api/payment-cancel/', PaymentCancelView.as_view(), name='payment-cancel'),
     path('api/payment/webhook/', StripeWebhookView, name='stripe-webhook'),
-    path('api/logout/', logout, name='logout'),
+    path('api/logout/', LogoutView.as_view(), name='logout'),
     path('api/logout-all/', logout_all, name='logout_all')
 ]
